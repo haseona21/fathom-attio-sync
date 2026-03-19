@@ -129,21 +129,38 @@ def attio_get(path):
 
 
 def find_person_by_email(email):
-    data = requests.post(
-        f"{ATTIO_BASE}/objects/people/records/query",
-        headers=ATTIO_HEADERS,
-        json={"filter": {"email_addresses": {"email_address": {"$eq": email}}}},
-    ).json()
-    return [r["id"]["record_id"] for r in data.get("data", [])]
+    # Try both shorthand and verbose filter to maximise match rate
+    for filter_body in [
+        {"email_addresses": email.lower()},
+        {"email_addresses": {"original_email_address": {"$eq": email.lower()}}},
+    ]:
+        resp = requests.post(
+            f"{ATTIO_BASE}/objects/people/records/query",
+            headers=ATTIO_HEADERS,
+            json={"filter": filter_body},
+        )
+        if resp.status_code == 200:
+            results = [r["id"]["record_id"] for r in resp.json().get("data", [])]
+            if results:
+                return results
+    return []
 
 
 def find_company_by_domain(domain):
-    data = requests.post(
-        f"{ATTIO_BASE}/objects/companies/records/query",
-        headers=ATTIO_HEADERS,
-        json={"filter": {"domains": {"domain": {"$eq": domain}}}},
-    ).json()
-    return [r["id"]["record_id"] for r in data.get("data", [])]
+    for filter_body in [
+        {"domains": domain.lower()},
+        {"domains": {"domain": {"$eq": domain.lower()}}},
+    ]:
+        resp = requests.post(
+            f"{ATTIO_BASE}/objects/companies/records/query",
+            headers=ATTIO_HEADERS,
+            json={"filter": filter_body},
+        )
+        if resp.status_code == 200:
+            results = [r["id"]["record_id"] for r in resp.json().get("data", [])]
+            if results:
+                return results
+    return []
 
 
 def get_current_value(object_type, record_id):
