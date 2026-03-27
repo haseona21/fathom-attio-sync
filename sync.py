@@ -8,11 +8,12 @@ Tracks last run time in last_run.txt (committed back to the repo by the
 GitHub Actions workflow so state persists across runs).
 """
 
+import argparse
 import os
 import re
 import time
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # ── Config ────────────────────────────────────────────────────────────────────
 FATHOM_API_KEY = os.environ["FATHOM_API_KEY"]
@@ -253,15 +254,28 @@ def process(meetings):
 
 
 if __name__ == "__main__":
-    run_started_at = datetime.now(timezone.utc).isoformat()
+    parser = argparse.ArgumentParser(description="Sync Fathom meetings to Attio records.")
+    parser.add_argument("--backfill", action="store_true",
+                        help="Backfill mode: fetch recent meetings without updating last_run.txt")
+    parser.add_argument("--days", type=int, default=14,
+                        help="Number of days to look back in backfill mode (default: 14)")
+    args = parser.parse_args()
 
-    last_run = read_last_run()
-    meetings = fetch_new_meetings(since=last_run)
-
-    if meetings:
-        process(meetings)
+    if args.backfill:
+        since = (datetime.now(timezone.utc) - timedelta(days=args.days)).isoformat()
+        print(f"Backfill mode: fetching meetings from the last {args.days} days\n")
+        meetings = fetch_new_meetings(since=since)
+        if meetings:
+            process(meetings)
+        else:
+            print("No meetings found in that period.")
     else:
-        print("No new meetings since last run.")
-
-    write_last_run(run_started_at)
-    print(f"\nLast run updated to {run_started_at}")
+        run_started_at = datetime.now(timezone.utc).isoformat()
+        last_run = read_last_run()
+        meetings = fetch_new_meetings(since=last_run)
+        if meetings:
+            process(meetings)
+        else:
+            print("No new meetings since last run.")
+        write_last_run(run_started_at)
+        print(f"\nLast run updated to {run_started_at}")
