@@ -1,68 +1,131 @@
-# Fathom → Attio Sync
+# attio-sync
 
-Automatically appends Fathom recording links to matching Person and Company records in Attio. Runs hourly via GitHub Actions.
+A Slack–Attio bridge that automates deal flow after founder calls. Powered by **Zoe**, a Slack bot that notifies the team and handles post-call workflows.
 
-Each link is formatted as `(YYYY-MM-DD): https://fathom.video/share/...` and appended to a text attribute on the record.
+## Features
+
+### 1. Fathom Link Sync (hourly cron)
+Fetches Fathom recordings and appends share links to matching Person and Company records in Attio. Runs standalone via GitHub Actions — no Slack involved.
+
+### 2. Zoe: Post-Call Notifications (every 10 min)
+- Polls Google Calendar for ended calls (5am–9pm PT, weekdays)
+- Matches attendees to Attio deals (via person or company domain)
+- Pulls transcript from Fathom API (Gmail email as fallback)
+- Generates a one-sentence AI summary via Claude
+- Posts to Slack with company name, summary, LinkedIn-linked attendees, Fathom link, and action buttons
+
+### 3. Action Buttons
+Each Zoe message has three buttons handled by a Bolt HTTP server:
+
+| Button | Action |
+|---|---|
+| **To Deals** | Posts deal summary to the deals channel |
+| **Ali to Reject** | Updates deal stage + creates Gmail rejection draft |
+| **Deal Review** | Updates deal stage to "Deal Review" |
+
+### 4. Unmatched Call Alerts
+When a call has no matching deal in Attio, a GitHub issue is created with full pipeline diagnostics (person lookup, domain handling, company match results).
+
+---
+
+## Project Structure
+
+```
+src/
+  types/
+    crm.ts             # CRM interface (swappable)
+    recording.ts        # Recording interface (swappable)
+  lib/
+    config.ts           # Env vars, Google auth
+    errors.ts           # Error classes, logger, GitHub issue creation
+    http.ts             # fetchWithRetry (429 handling)
+    state.ts            # State file I/O
+    attio.ts            # CRM implementation (Attio)
+    fathom.ts           # Recording implementation (Fathom)
+    gcal.ts             # Google Calendar
+    gmail.ts            # Gmail drafts + Fathom email search
+    slack.ts            # Zoe message formatting
+    ai.ts               # Claude summarization
+  actions/
+    registry.ts         # Button handler registry
+    to-deals.ts
+    ali-to-reject.ts
+    deal-review.ts
+  fathom-sync.ts        # Entry: hourly Fathom → Attio cron
+  notify.ts             # Entry: Zoe post-call notifications
+  bot.ts                # Entry: Slack Bolt HTTP server
+```
+
+CRM and Recording providers are behind interfaces — swap Attio or Fathom by writing a new implementation and changing one line in `config.ts`.
 
 ---
 
 ## Setup
 
-### 1. Attio — create the attribute
+### Prerequisites
+- Node.js 22+
+- npm
 
-In Attio, create a custom **Text** attribute on both **People** and **Companies**:
-- Name: `Fathom Recordings`
-- Slug: `fathom_recordings` (Attio generates this automatically)
+### 1. Install dependencies
+```bash
+npm install
+```
 
-If Attio generates a different slug, update the `ATTIO_ATTRIBUTE` value at the top of `sync.py`.
+### 2. Configure environment
+```bash
+cp .env.example .env
+```
 
-### 2. Fork / create the repo
+Fill in your API keys. See `.env.example` for all required variables.
 
-Push these files to a new GitHub repo. It can be private.
+### 3. Attio setup
+Create a custom **Text** attribute called `Fathom Links` (slug: `fathom_links`) on both **People** and **Companies** objects.
 
-### 3. Add secrets
+### 4. GitHub secrets
+Add these secrets in **Settings → Secrets → Actions**:
 
-In your GitHub repo go to **Settings → Secrets and variables → Actions → New repository secret** and add:
-
-| Secret name | Value |
+| Secret | Used by |
 |---|---|
-| `FATHOM_API_KEY` | From fathom.video/customize#api-access-header |
-| `ATTIO_API_KEY` | From Attio workspace settings → API |
-
-### 4. Enable Actions
-
-Go to the **Actions** tab in your repo and enable workflows if prompted.
-
-### 5. First run
-
-Trigger a manual run from **Actions → Fathom → Attio Sync → Run workflow**. This will:
-- Fetch your full Fathom meeting history (first run only)
-- Match attendees to Attio records
-- Write `last_run.txt` to the repo
-
-All subsequent runs will only fetch meetings since the last run.
+| `FATHOM_API_KEY` | sync, notify |
+| `ATTIO_API_KEY` | sync, notify |
+| `SLACK_BOT_TOKEN` | notify |
+| `SLACK_CHANNEL` | notify |
+| `GOOGLE_CREDENTIALS_JSON` | notify |
+| `ANTHROPIC_API_KEY` | notify |
+| `SLACK_SIGNING_SECRET` | bot |
 
 ---
 
-## Schedule
+## Running
 
-Runs every hour. To change the frequency, edit the cron expression in `.github/workflows/sync.yml`:
+### npm scripts
 
+| Command | Description |
+|---|---|
+| `npm run sync` | Run Fathom → Attio link sync |
+| `npm run backfill` | Backfill last 14 days (no state update) |
+| `npm run notify` | Run Zoe notification check |
+| `npm run bot` | Start Slack bot server |
+| `npm run typecheck` | TypeScript type checking |
+
+### CLI flags
+
+```bash
+# Backfill with custom window
+npm run backfill -- --days 30
+
+# Notify with custom window and dry run
+npm run notify -- --window 60 --dry-run
 ```
-0 * * * *   → every hour
-*/30 * * * * → every 30 minutes
-0 9 * * *   → once daily at 9am UTC
-```
+
+### Bot deployment
+The bot (`npm run bot`) needs to run as an always-on process with a public URL for Slack webhooks. Deploy on Railway, Fly.io, or similar.
 
 ---
 
-## How it works
+## GitHub Actions
 
-1. Reads `last_run.txt` to get the timestamp of the last successful run
-2. Fetches all Fathom meetings created after that timestamp
-3. For each meeting, finds external attendees and looks them up in Attio by email
-4. Appends `(date): link` to the `fathom_recordings` field on matched Person records
-5. Also matches on email domain → appends to matched Company records
-6. Updates `last_run.txt` and commits it back to the repo
-
-Free/personal email domains (Gmail, Outlook, etc.) are excluded from company matching.
+| Workflow | Schedule | Entry point |
+|---|---|---|
+| **Fathom Link Sync** | Hourly | `src/fathom-sync.ts` |
+| **Zoe Notifications** | Every 10 min, 5am–9pm PT + catch-all | `src/notify.ts` |
