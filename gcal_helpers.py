@@ -49,7 +49,7 @@ def get_recently_ended_meetings(minutes_ago: int = 10) -> list[dict]:
             timeMin=time_min,
             timeMax=time_max,
             singleEvents=True,
-            orderBy="endTime",
+            orderBy="startTime",
         ).execute()
     except Exception as exc:
         raise CalendarError(f"Failed to list calendar events: {exc}") from exc
