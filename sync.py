@@ -10,34 +10,29 @@ GitHub Actions workflow so state persists across runs).
 
 import argparse
 import os
-import re
 import time
 import requests
 from datetime import datetime, timedelta, timezone
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional — env vars can be set directly (e.g. in CI)
+
+from attio_helpers import (
+    extract_domain,
+    find_person_by_email,
+    find_company_by_domain,
+    append_link,
+    IGNORED_DOMAINS,
+)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 FATHOM_API_KEY = os.environ["FATHOM_API_KEY"]
-ATTIO_API_KEY  = os.environ["ATTIO_API_KEY"]
 LAST_RUN_FILE  = "last_run.txt"
 
 FATHOM_BASE = "https://api.fathom.ai/external/v1/meetings"
-ATTIO_BASE  = "https://api.attio.com/v2"
-
-ATTIO_HEADERS = {
-    "Authorization": f"Bearer {ATTIO_API_KEY}",
-    "Content-Type": "application/json",
-}
-
-IGNORED_DOMAINS = {
-    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com",
-    "yahoo.com", "icloud.com", "me.com", "mac.com", "live.com",
-    "msn.com", "protonmail.com", "pm.me",
-}
-
-# The Attio attribute slug where Fathom links are stored.
-# Create a Text attribute on People and Companies called "Fathom Recordings"
-# and use its slug here (visible in Attio under attribute settings).
-ATTIO_ATTRIBUTE = "fathom_links"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -99,11 +94,6 @@ def fetch_new_meetings(since: str | None):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def extract_domain(email):
-    match = re.search(r"@([\w.\-]+)$", email or "")
-    return match.group(1).lower() if match else None
-
-
 def format_date(iso_string):
     if not iso_string:
         return ""
@@ -118,81 +108,6 @@ def make_link_entry(meeting):
     date = format_date(meeting.get("scheduled_start_time") or meeting.get("created_at"))
     url  = meeting.get("share_url", "")
     return f"({date}): {url}"
-
-
-# ── Attio ─────────────────────────────────────────────────────────────────────
-
-def attio_get(path):
-    resp = requests.get(f"{ATTIO_BASE}{path}", headers=ATTIO_HEADERS)
-    if resp.status_code == 200:
-        return resp.json()
-    return None
-
-
-def find_person_by_email(email):
-    # Try both shorthand and verbose filter to maximise match rate
-    for filter_body in [
-        {"email_addresses": email.lower()},
-        {"email_addresses": {"original_email_address": {"$eq": email.lower()}}},
-    ]:
-        resp = requests.post(
-            f"{ATTIO_BASE}/objects/people/records/query",
-            headers=ATTIO_HEADERS,
-            json={"filter": filter_body},
-        )
-        if resp.status_code == 200:
-            results = [r["id"]["record_id"] for r in resp.json().get("data", [])]
-            if results:
-                return results
-    return []
-
-
-def find_company_by_domain(domain):
-    for filter_body in [
-        {"domains": domain.lower()},
-        {"domains": {"domain": {"$eq": domain.lower()}}},
-    ]:
-        resp = requests.post(
-            f"{ATTIO_BASE}/objects/companies/records/query",
-            headers=ATTIO_HEADERS,
-            json={"filter": filter_body},
-        )
-        if resp.status_code == 200:
-            results = [r["id"]["record_id"] for r in resp.json().get("data", [])]
-            if results:
-                return results
-    return []
-
-
-def get_current_value(object_type, record_id):
-    """Read the current fathom_recordings value from an Attio record."""
-    data = attio_get(f"/objects/{object_type}/records/{record_id}")
-    if not data:
-        return ""
-    values = data.get("data", {}).get("values", {})
-    entries = values.get(ATTIO_ATTRIBUTE, [])
-    if entries:
-        return entries[0].get("value", "")
-    return ""
-
-
-def append_link(object_type, record_id, new_entry):
-    """Read current value, append new_entry if not already present, write back."""
-    current = get_current_value(object_type, record_id)
-
-    # Skip if this exact entry already exists (idempotent)
-    if new_entry in current:
-        print(f"    Already exists, skipping.")
-        return False
-
-    updated = f"{current}, {new_entry}" if current else new_entry
-
-    resp = requests.patch(
-        f"{ATTIO_BASE}/objects/{object_type}/records/{record_id}",
-        headers=ATTIO_HEADERS,
-        json={"data": {"values": {ATTIO_ATTRIBUTE: updated}}},
-    )
-    return resp.status_code in (200, 201)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

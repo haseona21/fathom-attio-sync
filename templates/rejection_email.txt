@@ -1,0 +1,11 @@
+Subject: Following up — {company_name}
+
+Hi {founder_name},
+
+Thank you for taking the time to share more about {company_name} with us. We really enjoyed learning about what you're building.
+
+After careful consideration, we've decided not to move forward at this time. This isn't a reflection of the quality of your work — it simply doesn't align with our current investment focus.
+
+We wish you the very best and would love to stay in touch as things evolve.
+
+Best regards
