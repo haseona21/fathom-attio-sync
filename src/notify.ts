@@ -160,21 +160,33 @@ async function getCallSummary(
     `Fathom match for "${meetingTitle}": ${fathomMeeting ? `found "${fathomMeeting.title}" (id: ${fathomMeeting.id})` : "not found"} (searched ${meetings.length} meetings today)`,
   );
 
-  let transcript = "";
   let fathomLink = "";
+  let summaryText = "";
 
   if (fathomMeeting) {
-    transcript = await recording.getTranscript(fathomMeeting.id);
     fathomLink = fathomMeeting.shareUrl;
+
+    // Use Fathom's default_summary first (already processed by Fathom)
+    if (fathomMeeting.defaultSummary) {
+      summaryText = fathomMeeting.defaultSummary;
+      logger.info(`Using Fathom default_summary for "${meetingTitle}"`);
+    }
+    // Then try inline transcript → Claude
+    else if (fathomMeeting.transcript) {
+      summaryText = await summarizeTranscript(fathomMeeting.transcript, companyName);
+    }
   }
 
-  // Fallback to Gmail Fathom email
-  if (!transcript) {
-    transcript = await getFathomSummary(meetingTitle);
+  // Fallback to Gmail Fathom email → Claude
+  if (!summaryText) {
+    const attendeeEmail = attendeeEmails[0] ?? "";
+    const gmailText = await getFathomSummary(meetingTitle, attendeeEmail, companyName);
+    if (gmailText) {
+      summaryText = await summarizeTranscript(gmailText, companyName);
+    }
   }
 
-  const summary = await summarizeTranscript(transcript, companyName);
-  return { summary, fathomLink };
+  return { summary: summaryText, fathomLink };
 }
 
 async function buildLinkedinMap(

@@ -10,6 +10,23 @@ function getGmailService() {
   return google.gmail({ version: "v1", auth: getGoogleAuth() });
 }
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function extractTextFromPayload(payload: Record<string, unknown>): string {
   const mimeType = String(payload.mimeType ?? "");
 
@@ -19,7 +36,24 @@ function extractTextFromPayload(payload: Record<string, unknown>): string {
     if (data) return Buffer.from(data, "base64url").toString("utf-8");
   }
 
+  if (mimeType === "text/html") {
+    const body = payload.body as Record<string, unknown> | undefined;
+    const data = String(body?.data ?? "");
+    if (data) return stripHtml(Buffer.from(data, "base64url").toString("utf-8"));
+  }
+
+  // Check multipart parts — prefer text/plain over text/html
   const parts = (payload.parts ?? []) as Record<string, unknown>[];
+  for (const preferred of ["text/plain", "text/html"]) {
+    for (const part of parts) {
+      if (String(part.mimeType ?? "") === preferred) {
+        const text = extractTextFromPayload(part);
+        if (text) return text;
+      }
+    }
+  }
+
+  // Recurse into any remaining parts
   for (const part of parts) {
     const text = extractTextFromPayload(part);
     if (text) return text;
@@ -28,29 +62,43 @@ function extractTextFromPayload(payload: Record<string, unknown>): string {
   return "";
 }
 
-export async function getFathomSummary(meetingTitle: string): Promise<string> {
+export async function getFathomSummary(
+  meetingTitle: string,
+  attendeeEmail = "",
+  companyName = "",
+): Promise<string> {
   const gmail = getGmailService();
-  const query = `from:no-reply@fathom.video subject:${meetingTitle}`;
 
-  try {
-    const res = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 1 });
-    const messages = res.data.messages ?? [];
-    if (!messages.length) {
-      logger.info(`No Fathom email found for meeting: ${meetingTitle}`);
-      return "";
+  // Fathom email subjects are "Recap of your meeting with {company/email}"
+  // Try multiple search strategies
+  const queries = [
+    companyName && `from:no-reply@fathom.video subject:"${companyName}"`,
+    attendeeEmail && `from:no-reply@fathom.video subject:"${attendeeEmail}"`,
+    `from:no-reply@fathom.video subject:"${meetingTitle}"`,
+  ].filter(Boolean) as string[];
+
+  for (const query of queries) {
+    try {
+      const res = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 1 });
+      const messages = res.data.messages ?? [];
+      if (!messages.length) continue;
+
+      const msg = await gmail.users.messages.get({ userId: "me", id: messages[0].id!, format: "full" });
+      const payload = msg.data.payload as Record<string, unknown> | undefined;
+      if (!payload) continue;
+
+      const body = extractTextFromPayload(payload);
+      if (body) {
+        logger.info(`Fathom summary found via query "${query}" (${body.length} chars)`);
+        return body;
+      }
+    } catch (err) {
+      logger.warn(`Fathom email search failed for query "${query}": ${err}`);
     }
-
-    const msg = await gmail.users.messages.get({ userId: "me", id: messages[0].id!, format: "full" });
-    const payload = msg.data.payload as Record<string, unknown> | undefined;
-    if (!payload) return "";
-
-    const body = extractTextFromPayload(payload);
-    logger.info(`Fathom summary found for '${meetingTitle}' (${body.length} chars)`);
-    return body;
-  } catch (err) {
-    logger.warn(`Fathom email search failed: ${err}`);
-    return "";
   }
+
+  logger.info(`No Fathom email found for meeting: ${meetingTitle}`);
+  return "";
 }
 
 async function findExistingThread(

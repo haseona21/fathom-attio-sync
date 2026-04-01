@@ -20,7 +20,7 @@ export async function toDeals(payload: Record<string, string>) {
   const dealDetails = dealId ? await crm.getDealDetails(dealId) : null;
 
   // 2. Get Fathom summary from Gmail and condense with Claude
-  const fathomFullSummary = await getFathomSummary(dealName);
+  const fathomFullSummary = await getFathomSummary(dealName, attendeeEmail, companyName);
   const summary = fathomFullSummary
     ? await summarizeTranscript(fathomFullSummary, companyName)
     : "";

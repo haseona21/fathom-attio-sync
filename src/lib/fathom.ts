@@ -44,6 +44,8 @@ export function createFathomRecording(): Recording {
               ? String(item.scheduled_start_time)
               : null,
             createdAt: String(item.created_at ?? ""),
+            defaultSummary: item.default_summary ? String(item.default_summary) : null,
+            transcript: item.transcript ? String(item.transcript) : null,
             invitees: invitees.map((inv) => ({
               email: String(inv.email ?? ""),
               isExternal: inv.is_external !== false,

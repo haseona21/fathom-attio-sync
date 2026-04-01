@@ -5,6 +5,8 @@ export interface Meeting {
   scheduledStartTime: string | null;
   createdAt: string;
   invitees: MeetingInvitee[];
+  defaultSummary: string | null;
+  transcript: string | null;
 }
 
 export interface MeetingInvitee {
