@@ -120,9 +120,10 @@ export async function updateMessageWithResult(
 
   const resultBlock = { type: "section" as const, text: { type: "mrkdwn" as const, text: resultText } };
 
-  const newBlocks = originalBlocks
+  const newBlocks = originalBlocks?.length
     ? [
         ...(originalBlocks as { type: string }[]).filter((b) => b.type !== "actions"),
+        { type: "divider" as const },
         resultBlock,
       ]
     : [resultBlock];
