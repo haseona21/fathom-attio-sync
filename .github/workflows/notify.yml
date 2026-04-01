@@ -2,7 +2,7 @@ name: Post-Call Deal Notifications
 
 on:
   schedule:
-    - cron: "*/5 * * * *"  # every 5 minutes
+    - cron: "*/30 * * * *"  # every 30 minutes
   workflow_dispatch:         # allow manual trigger from GitHub UI
 
 jobs:
@@ -29,12 +29,12 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
-        run: python notify.py
+        run: python notify.py --window 30
 
       - name: Commit updated state
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add notified_events.json
+          [ -f notified_events.json ] && git add notified_events.json
           git diff --staged --quiet || git commit -m "chore: update notified_events [skip ci]"
           git push
