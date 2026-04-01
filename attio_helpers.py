@@ -159,7 +159,7 @@ def find_deals_by_person(person_record_id: str) -> list[dict]:
         f"/objects/{DEALS_OBJECT}/records/query",
         {
             "filter": {
-                "primary_contact": {"$eq": person_record_id},
+                "primary_contact": {"target_record_id": {"$eq": person_record_id}},
             },
         },
     )
@@ -185,7 +185,7 @@ def find_deals_by_company(company_record_id: str) -> list[dict]:
         f"/objects/{DEALS_OBJECT}/records/query",
         {
             "filter": {
-                "company": {"$eq": company_record_id},
+                "company": {"target_record_id": {"$eq": company_record_id}},
             },
         },
     )
