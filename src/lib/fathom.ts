@@ -37,7 +37,7 @@ export function createFathomRecording(): Recording {
         for (const item of items) {
           const invitees = (item.calendar_invitees as Record<string, unknown>[]) ?? [];
           meetings.push({
-            id: String(item.id ?? ""),
+            id: String(item.recording_id ?? ""),
             title: String(item.title ?? item.meeting_title ?? "Untitled"),
             shareUrl: String(item.share_url ?? ""),
             scheduledStartTime: item.scheduled_start_time

@@ -132,13 +132,32 @@ async function matchAttendeesToDeals(
 async function getCallSummary(
   recording: Recording,
   meetingTitle: string,
+  attendeeEmails: string[],
   companyName: string,
 ): Promise<{ summary: string; fathomLink: string }> {
-  // Try Fathom API transcript first
-  // Note: we search by title since we don't have a direct Fathom meeting ID mapping to calendar events
-  const meetings = await recording.fetchMeetings(null);
-  const fathomMeeting = meetings.find(
-    (m) => m.title.toLowerCase().includes(meetingTitle.toLowerCase()),
+  // Fetch only today's Fathom meetings
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const meetings = await recording.fetchMeetings(todayStart.toISOString());
+
+  // Match strategy: attendee email first, then title fallback
+  let fathomMeeting = meetings.find((m) =>
+    m.invitees.some((inv) =>
+      attendeeEmails.some((email) => inv.email.toLowerCase() === email.toLowerCase()),
+    ),
+  );
+
+  // Fallback to title match
+  if (!fathomMeeting) {
+    const titleLower = meetingTitle.toLowerCase();
+    fathomMeeting = meetings.find((m) => {
+      const ft = m.title.toLowerCase();
+      return ft.includes(titleLower) || titleLower.includes(ft);
+    });
+  }
+
+  logger.info(
+    `Fathom match for "${meetingTitle}": ${fathomMeeting ? `found "${fathomMeeting.title}" (id: ${fathomMeeting.id})` : "not found"} (searched ${meetings.length} meetings today)`,
   );
 
   let transcript = "";
@@ -262,6 +281,7 @@ async function run(dryRun: boolean, windowMinutes: number) {
             const { summary, fathomLink } = await getCallSummary(
               recording,
               meeting.title,
+              meeting.attendeeEmails,
               match.companyName,
             );
 
