@@ -49,6 +49,38 @@ export const logger = {
   },
 };
 
+// -- GitHub Issues for unmatched calls / alerts --
+
+const GITHUB_REPO = process.env.GITHUB_REPOSITORY ?? "haseona21/attio-sync";
+
+export async function createGitHubIssue(title: string, body: string, labels: string[] = []) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    logger.warn("GITHUB_TOKEN not set — skipping GitHub issue creation");
+    return;
+  }
+
+  try {
+    const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title, body, labels }),
+    });
+
+    if (resp.ok) {
+      const data = (await resp.json()) as { number: number; html_url: string };
+      logger.info(`GitHub issue #${data.number} created: ${data.html_url}`);
+    } else {
+      logger.warn(`Failed to create GitHub issue: ${resp.status} ${await resp.text()}`);
+    }
+  } catch (err) {
+    logger.warn(`Failed to create GitHub issue: ${err}`);
+  }
+}
+
 export class ErrorCollector {
   errors: { context: string; error: string }[] = [];
 

@@ -9,7 +9,7 @@ import { getFathomSummary } from "./lib/gmail.js";
 import { sendZoeMessage } from "./lib/slack.js";
 import { summarizeTranscript } from "./lib/ai.js";
 import { loadNotifiedEvents, saveNotifiedEvents, stateKey } from "./lib/state.js";
-import { ErrorCollector, logger } from "./lib/errors.js";
+import { ErrorCollector, createGitHubIssue, logger } from "./lib/errors.js";
 
 interface DealMatch {
   dealRecordId: string;
@@ -20,18 +20,53 @@ interface DealMatch {
   companyRecordId: string;
 }
 
+interface MatchDiagnostic {
+  email: string;
+  personFound: boolean;
+  personIds: string[];
+  dealsByPerson: number;
+  domain: string | null;
+  domainIgnored: boolean;
+  companyFound: boolean;
+  companyIds: string[];
+  dealsByCompany: number;
+}
+
+interface MatchResult {
+  matches: DealMatch[];
+  diagnostics: MatchDiagnostic[];
+}
+
 async function matchAttendeesToDeals(
   crm: CRM,
   attendeeEmails: string[],
-): Promise<DealMatch[]> {
+): Promise<MatchResult> {
   const matches: DealMatch[] = [];
+  const diagnostics: MatchDiagnostic[] = [];
   const seenDealIds = new Set<string>();
 
   for (const email of attendeeEmails) {
+    const diag: MatchDiagnostic = {
+      email,
+      personFound: false,
+      personIds: [],
+      dealsByPerson: 0,
+      domain: extractDomain(email),
+      domainIgnored: false,
+      companyFound: false,
+      companyIds: [],
+      dealsByCompany: 0,
+    };
+
     // Person → deal
     const personIds = await crm.findPersonByEmail(email);
+    diag.personFound = personIds.length > 0;
+    diag.personIds = personIds;
+
     for (const personId of personIds) {
       const deals = await crm.findDealsByPerson(personId);
+      diag.dealsByPerson += deals.length;
+
       for (const deal of deals) {
         if (seenDealIds.has(deal.recordId)) continue;
         seenDealIds.add(deal.recordId);
@@ -55,12 +90,21 @@ async function matchAttendeesToDeals(
     }
 
     // Domain → company → deal
-    const domain = extractDomain(email);
-    if (!domain || IGNORED_DOMAINS.has(domain)) continue;
+    const domain = diag.domain;
+    if (!domain || IGNORED_DOMAINS.has(domain)) {
+      diag.domainIgnored = !domain || IGNORED_DOMAINS.has(domain);
+      diagnostics.push(diag);
+      continue;
+    }
 
     const companyIds = await crm.findCompanyByDomain(domain);
+    diag.companyFound = companyIds.length > 0;
+    diag.companyIds = companyIds;
+
     for (const companyId of companyIds) {
       const deals = await crm.findDealsByCompany(companyId);
+      diag.dealsByCompany += deals.length;
+
       for (const deal of deals) {
         if (seenDealIds.has(deal.recordId)) continue;
         seenDealIds.add(deal.recordId);
@@ -78,9 +122,11 @@ async function matchAttendeesToDeals(
         });
       }
     }
+
+    diagnostics.push(diag);
   }
 
-  return matches;
+  return { matches, diagnostics };
 }
 
 async function getCallSummary(
@@ -156,10 +202,46 @@ async function run(dryRun: boolean, windowMinutes: number) {
   for (const meeting of meetings) {
     try {
       logger.info(`Processing meeting: ${meeting.title} (${meeting.eventId})`);
-      const matches = await matchAttendeesToDeals(crm, meeting.attendeeEmails);
+      const { matches, diagnostics } = await matchAttendeesToDeals(crm, meeting.attendeeEmails);
 
       if (!matches.length) {
         logger.info(`  No deal matches for meeting '${meeting.title}'`);
+        if (!dryRun) {
+          const diagLines = diagnostics.map((d) => {
+            const steps: string[] = [`  - \`${d.email}\``];
+            if (d.personFound) {
+              steps.push(`    - Person found (${d.personIds.join(", ")})`);
+              steps.push(`    - Deals via primary_contact: ${d.dealsByPerson}`);
+            } else {
+              steps.push(`    - No person found in Attio`);
+            }
+            if (d.domainIgnored) {
+              steps.push(`    - Domain \`${d.domain ?? "none"}\` is personal/ignored — company lookup skipped`);
+            } else if (d.domain) {
+              if (d.companyFound) {
+                steps.push(`    - Company found for \`${d.domain}\` (${d.companyIds.join(", ")})`);
+                steps.push(`    - Deals via company: ${d.dealsByCompany}`);
+              } else {
+                steps.push(`    - No company found for \`${d.domain}\``);
+              }
+            }
+            return steps.join("\n");
+          });
+
+          await createGitHubIssue(
+            `Unmatched call: ${meeting.title}`,
+            [
+              `**Meeting:** ${meeting.title}`,
+              `**Ended:** ${meeting.endTime}`,
+              `**Attendees:** ${meeting.attendeeEmails.join(", ")}`,
+              "",
+              "### Match pipeline results",
+              "",
+              ...diagLines,
+            ].join("\n"),
+            ["unmatched-call"],
+          );
+        }
         continue;
       }
 
