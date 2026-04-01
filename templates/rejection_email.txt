@@ -1,11 +1,11 @@
-Subject: Following up — {company_name}
+{founder_name},
 
-Hi {founder_name},
+Thank you so much for making the time to connect — I know it's a crazy time. It was a pleasure to get to chat.
 
-Thank you for taking the time to share more about {company_name} with us. We really enjoyed learning about what you're building.
+Wanted to close the loop and let you know I synced with my partners Kanjun and Josh. They had some lingering questions around market, so it doesn't feel like we're quite the right partners here.
 
-After careful consideration, we've decided not to move forward at this time. This isn't a reflection of the quality of your work — it simply doesn't align with our current investment focus.
+I'm wishing you the absolute best, and I'm here anytime I can be helpful. Hope to cross paths again soon.
 
-We wish you the very best and would love to stay in touch as things evolve.
 
-Best regards
+Warmly,
+Ali

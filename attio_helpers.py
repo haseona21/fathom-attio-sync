@@ -251,6 +251,30 @@ def update_deal_stage(deal_record_id: str, stage_title: str) -> bool:
 
 
 @with_error_handling
+def get_all_person_emails(email: str) -> list[str]:
+    """Look up a person by email and return all their email addresses from Attio.
+
+    Falls back to [email] if the person isn't found or has no other addresses.
+    """
+    person_ids = find_person_by_email(email)
+    if not person_ids:
+        return [email]
+
+    data = attio_get(f"/objects/people/records/{person_ids[0]}")
+    if not data:
+        return [email]
+
+    entries = data.get("data", {}).get("values", {}).get("email_addresses", [])
+    emails = []
+    for entry in entries:
+        addr = entry.get("email_address", "") or entry.get("value", "")
+        if addr:
+            emails.append(addr.lower())
+
+    return emails or [email]
+
+
+@with_error_handling
 def get_person_details(person_record_id: str) -> dict | None:
     """Fetch person name and email from Attio."""
     data = attio_get(f"/objects/people/records/{person_record_id}")

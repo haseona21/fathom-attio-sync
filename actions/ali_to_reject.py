@@ -4,7 +4,7 @@ actions/ali_to_reject.py
 Button 2: "Ali to Reject" — update deal stage + create Gmail rejection draft.
 """
 
-from attio_helpers import update_deal_stage
+from attio_helpers import update_deal_stage, get_all_person_emails
 from gmail_helpers import create_rejection_draft
 from errors import logger, AttioError, GmailError
 
@@ -43,7 +43,8 @@ def handle(payload: dict) -> dict:
     # 2. Create Gmail rejection draft
     if email:
         try:
-            draft_id = create_rejection_draft(email, name, company)
+            all_emails = get_all_person_emails(email)
+            draft_id = create_rejection_draft(email, name, company, all_emails=all_emails)
             results.append(f"Gmail draft created (id: {draft_id})")
             logger.info("Rejection draft created for %s (%s)", email, company)
         except GmailError as exc:
