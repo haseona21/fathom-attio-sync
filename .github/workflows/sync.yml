@@ -1,9 +1,9 @@
-name: Fathom → Attio Sync
+name: Fathom Link Sync
 
 on:
   schedule:
-    - cron: "0 * * * *"  # every hour
-  workflow_dispatch:       # allow manual trigger from GitHub UI
+    - cron: "0 * * * *" # every hour
+  workflow_dispatch:
 
 jobs:
   sync:
@@ -15,19 +15,20 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
-        run: pip install requests
+        run: npm ci
 
       - name: Run sync
         env:
           FATHOM_API_KEY: ${{ secrets.FATHOM_API_KEY }}
           ATTIO_API_KEY: ${{ secrets.ATTIO_API_KEY }}
-        run: python sync.py
+        run: npx tsx src/fathom-sync.ts
 
       - name: Commit updated last_run.txt
         run: |
