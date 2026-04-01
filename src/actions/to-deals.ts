@@ -1,66 +1,61 @@
 import { createAttioCRM } from "../lib/attio.js";
 import { postToDealsChannel } from "../lib/slack.js";
-import { getFathomSummary } from "../lib/gmail.js";
-import { summarizeTranscript } from "../lib/ai.js";
 import { logger } from "../lib/errors.js";
 
 export async function toDeals(payload: Record<string, string>) {
   const dealId = payload.deal_record_id ?? "";
-  const dealName = payload.deal_name ?? "Unknown";
   const companyName = payload.company_name ?? "";
   const attendeeEmail = payload.attendee_email ?? "";
+  const summary = payload.summary ?? "";
+  const fathomLink = payload.fathom_link ?? "";
 
   const crm = createAttioCRM();
-  const results: string[] = [];
-  let overallSuccess = true;
 
-  logger.info(`To Deals action for deal ${dealId} (${dealName})`);
+  logger.info(`To Deals action for deal ${dealId} (${companyName})`);
 
-  // 1. Get deal details for company record
-  const dealDetails = dealId ? await crm.getDealDetails(dealId) : null;
-
-  // 2. Get Fathom summary from Gmail and condense with Claude
-  const fathomFullSummary = await getFathomSummary(dealName, attendeeEmail, companyName);
-  const summary = fathomFullSummary
-    ? await summarizeTranscript(fathomFullSummary, companyName)
-    : "";
-
-  // 3. Get LinkedIn links for attendees
+  // 1. Get LinkedIn links for attendees
   const linkedinLinks: string[] = [];
   if (attendeeEmail) {
     const personIds = await crm.findPersonByEmail(attendeeEmail);
     for (const pid of personIds) {
+      const person = await crm.getPersonDetails(pid);
       const linkedin = await crm.getPersonLinkedin(pid);
-      if (linkedin) linkedinLinks.push(linkedin);
+      if (linkedin && person?.name) {
+        linkedinLinks.push(`<${linkedin}|${person.name}>`);
+      } else if (linkedin) {
+        linkedinLinks.push(linkedin);
+      }
     }
   }
 
-  // 4. Get Fathom recording link from company
-  let fathomLink = "";
-  if (dealDetails?.companyRecordId) {
-    fathomLink = await crm.getCompanyFathomLink(dealDetails.companyRecordId);
+  // 2. Get all deal links (Deck, Dataroom, Demo, etc.)
+  const dealLinks = dealId ? await crm.getDealLinkedRecords(dealId) : [];
+
+  // 3. Get files uploaded to the deal record
+  const dealFiles = dealId ? await crm.getDealFiles(dealId) : [];
+  const files: { name: string; downloadUrl: string }[] = [];
+  for (const file of dealFiles) {
+    const downloadUrl = await crm.getFileDownloadUrl(file.fileId);
+    files.push({ name: file.name, downloadUrl });
   }
 
-  // 5. Get deck URL from deal links
-  const deckUrl = dealId ? await crm.getDealDeckUrl(dealId) : "";
-
-  // 6. Post to deals channel
+  // 4. Post to deals channel
   try {
-    const ts = await postToDealsChannel(companyName, summary, linkedinLinks, fathomLink, deckUrl);
-    if (ts) {
-      results.push("Posted to deals channel");
-    } else {
-      results.push("Failed to post to deals channel");
-      overallSuccess = false;
-    }
-  } catch (err) {
-    results.push(`Failed to post to deals channel: ${err}`);
-    logger.error(`Failed to post to deals channel: ${err}`);
-    overallSuccess = false;
-  }
+    const ts = await postToDealsChannel({
+      companyName,
+      summary,
+      linkedinLinks,
+      fathomLink,
+      dealLinks,
+      files,
+    });
 
-  return {
-    success: overallSuccess,
-    message: results.length ? results.join("\n") : "Posted to deals channel",
-  };
+    if (ts) {
+      return { success: true, message: "Posted to deals channel" };
+    }
+    return { success: false, message: "Failed to post to deals channel" };
+  } catch (err) {
+    logger.error(`Failed to post to deals channel: ${err}`);
+    return { success: false, message: `Failed to post to deals channel: ${err}` };
+  }
 }

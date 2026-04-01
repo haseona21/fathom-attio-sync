@@ -23,6 +23,12 @@ export interface DealLink {
   title: string;
 }
 
+export interface DealFile {
+  name: string;
+  fileId: string;
+  fileType: "file" | "connected-file" | "folder" | "connected-folder";
+}
+
 export interface CRM {
   // People
   findPersonByEmail(email: string): Promise<string[]>;
@@ -42,6 +48,10 @@ export interface CRM {
   updateDealStage(dealRecordId: string, stageTitle: string): Promise<void>;
   getDealLinkedRecords(dealRecordId: string): Promise<DealLink[]>;
   getDealDeckUrl(dealRecordId: string): Promise<string>;
+
+  // Files
+  getDealFiles(dealRecordId: string): Promise<DealFile[]>;
+  getFileDownloadUrl(fileId: string): Promise<string>;
 
   // Fathom links (used by fathom-sync)
   getCurrentValue(objectType: string, recordId: string): Promise<string>;

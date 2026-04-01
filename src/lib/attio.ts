@@ -1,4 +1,4 @@
-import type { CRM, Deal, DealLink, Person } from "../types/crm.js";
+import type { CRM, Deal, DealFile, DealLink, Person } from "../types/crm.js";
 import { ATTIO_API_KEY } from "./config.js";
 import { AttioError, logger } from "./errors.js";
 import { fetchWithRetry } from "./http.js";
@@ -221,6 +221,51 @@ export function createAttioCRM(): CRM {
       const links = await this.getDealLinkedRecords(dealRecordId);
       const deck = links.find((l) => l.type === "Deck");
       return deck?.url ?? "";
+    },
+
+    async getDealFiles(dealRecordId) {
+      const resp = await fetchWithRetry(
+        `${BASE}/files?object=${DEALS_OBJECT}&record_id=${dealRecordId}`,
+        { headers: headers() },
+      );
+      if (!resp.ok) {
+        logger.warn(`Attio files list for ${dealRecordId} returned ${resp.status}`);
+        return [];
+      }
+      const data = (await resp.json()) as Record<string, unknown>;
+      const items = (data.data as Record<string, unknown>[]) ?? [];
+
+      const files: DealFile[] = [];
+      for (const item of items) {
+        const fileType = String(item.file_type ?? "");
+        if (fileType !== "file" && fileType !== "connected-file") continue;
+        const id = item.id as Record<string, string> | undefined;
+        files.push({
+          name: String(item.name ?? ""),
+          fileId: id?.file_id ?? "",
+          fileType: fileType as DealFile["fileType"],
+        });
+      }
+      return files;
+    },
+
+    async getFileDownloadUrl(fileId) {
+      // Follow redirect to get signed URL
+      const resp = await fetch(`${BASE}/files/${fileId}/download`, {
+        headers: headers(),
+        redirect: "manual",
+      });
+      const location = resp.headers.get("location");
+      if (location) return location;
+
+      // Some responses may be 200 with a direct URL
+      if (resp.ok) {
+        const data = (await resp.json()) as Record<string, unknown>;
+        return String(data.url ?? data.download_url ?? "");
+      }
+
+      logger.warn(`Attio file download for ${fileId} returned ${resp.status}`);
+      return "";
     },
 
     async getCurrentValue(objectType, recordId) {

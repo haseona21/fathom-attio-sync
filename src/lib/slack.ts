@@ -49,6 +49,8 @@ export async function sendZoeMessage(data: ZoeMessageData): Promise<string | nul
     attendee_name: data.contactName,
     company_name: data.companyName,
     deal_name: data.dealName,
+    summary: data.summary,
+    fathom_link: data.fathomLink,
   });
 
   const attendees = formatAttendees(data.attendeeEmails, data.linkedinMap);
@@ -136,21 +138,38 @@ export async function updateMessageWithResult(
   }
 }
 
-export async function postToDealsChannel(
-  companyName: string,
-  summary: string,
-  linkedinLinks: string[],
-  fathomLink = "",
-  deckUrl = "",
-): Promise<string | null> {
+export interface DealsPostData {
+  companyName: string;
+  summary: string;
+  linkedinLinks: string[];
+  fathomLink: string;
+  dealLinks: { url: string; type: string; title: string }[];
+  files: { name: string; downloadUrl: string }[];
+}
+
+export async function postToDealsChannel(data: DealsPostData): Promise<string | null> {
   const client = getClient();
   const channel = SLACK_DEALS_CHANNEL();
 
-  const lines = [`*${companyName}*`];
-  if (summary) lines.push(summary);
-  if (linkedinLinks.length) lines.push(linkedinLinks.join(", "));
-  if (fathomLink) lines.push(`\nFathom: ${fathomLink}`);
-  if (deckUrl) lines.push(`Deck: ${deckUrl}`);
+  const lines = [`*${data.companyName}*`];
+  if (data.summary) lines.push(data.summary);
+  if (data.linkedinLinks.length) lines.push(data.linkedinLinks.join(", "));
+  if (data.fathomLink) lines.push(`<${data.fathomLink}|Fathom Recording>`);
+
+  for (const link of data.dealLinks) {
+    const label = link.title || link.url;
+    lines.push(`${link.type}: <${link.url}|${label}>`);
+  }
+
+  if (data.files.length) {
+    for (const file of data.files) {
+      if (file.downloadUrl) {
+        lines.push(`<${file.downloadUrl}|${file.name}>`);
+      } else {
+        lines.push(file.name);
+      }
+    }
+  }
 
   const text = lines.join("\n");
 
