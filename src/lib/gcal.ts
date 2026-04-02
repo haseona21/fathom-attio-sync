@@ -46,7 +46,7 @@ export async function getRecentlyEndedMeetings(minutesAgo = 10): Promise<Calenda
     if (new Date(event.end.dateTime) > now) continue;
 
     const attendeeEmails = (event.attendees ?? [])
-      .filter((a) => !a.self && !a.organizer && a.email)
+      .filter((a) => !a.self && a.email)
       .map((a) => a.email!);
 
     results.push({

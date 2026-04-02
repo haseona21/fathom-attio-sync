@@ -37,6 +37,8 @@ interface MatchResult {
   diagnostics: MatchDiagnostic[];
 }
 
+const EXCLUDED_STAGES = new Set(["Reject", "Invested"]);
+
 async function matchAttendeesToDeals(
   crm: CRM,
   attendeeEmails: string[],
@@ -73,6 +75,12 @@ async function matchAttendeesToDeals(
 
         const person = await crm.getPersonDetails(personId);
         const details = await crm.getDealDetails(deal.recordId);
+
+        if (details && EXCLUDED_STAGES.has(details.dealStage)) {
+          logger.info(`  Skipping deal ${details.dealName} — stage "${details.dealStage}" excluded`);
+          continue;
+        }
+
         let companyName = "";
         if (details?.companyRecordId) {
           companyName = await crm.getCompanyName(details.companyRecordId);
@@ -110,6 +118,12 @@ async function matchAttendeesToDeals(
         seenDealIds.add(deal.recordId);
 
         const details = await crm.getDealDetails(deal.recordId);
+
+        if (details && EXCLUDED_STAGES.has(details.dealStage)) {
+          logger.info(`  Skipping deal ${details.dealName} — stage "${details.dealStage}" excluded`);
+          continue;
+        }
+
         const companyName = await crm.getCompanyName(companyId);
 
         matches.push({
