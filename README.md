@@ -100,7 +100,6 @@ Create a custom **Text** attribute called `Fathom Links` (slug: `fathom_links`) 
 | `ANTHROPIC_API_KEY` | notify |
 | `GITHUB_TOKEN` | unmatched call issues |
 | `GITHUB_REPOSITORY` | unmatched call issues |
-| `STATE_DIR` | `/data` on Railway (persistent volume) |
 
 ---
 
@@ -146,10 +145,11 @@ Deployed as a single always-on service on Railway. The unified entrypoint (`npm 
 | **Fathom Sync** | Hourly | Syncs Fathom links to Attio |
 | **Notify** | Every 10 min (5am–9pm PT, weekdays) | Post-call notifications |
 
+Runtime failures (bot disconnect, cron errors) send a Slack DM alert automatically.
+
 ### Railway setup
 1. Create a new service from the GitHub repo
 2. **Build command:** `npm ci`
 3. **Start command:** `npm start`
-4. Create a **persistent volume** mounted at `/data`
-5. Set `STATE_DIR=/data` and all other env vars above
-6. Health check: HTTP on `PORT` (auto-set by Railway)
+4. Set all env vars above
+5. Health check: HTTP on `PORT` (auto-set by Railway)
