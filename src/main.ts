@@ -34,7 +34,6 @@ createServer((_, res) => {
 // Start Slack bot
 startBot().catch((err) => {
   logger.error("Failed to start bot:", err);
-  process.exit(1);
 });
 
 // Fathom sync — every hour
