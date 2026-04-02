@@ -1,13 +1,19 @@
 import "dotenv/config";
 import { App } from "@slack/bolt";
-import { SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET } from "./lib/config.js";
 import { ACTION_HANDLERS } from "./actions/registry.js";
 import { updateMessageWithResult } from "./lib/slack.js";
 import { logger } from "./lib/errors.js";
 
+const appToken = process.env.SLACK_APP_TOKEN;
+if (!appToken) {
+  logger.error("SLACK_APP_TOKEN not set — required for Socket Mode");
+  process.exit(1);
+}
+
 const app = new App({
-  token: SLACK_BOT_TOKEN(),
-  signingSecret: SLACK_SIGNING_SECRET(),
+  token: process.env.SLACK_BOT_TOKEN!,
+  appToken,
+  socketMode: true,
 });
 
 app.action(/.*/, async ({ ack, body, action }) => {
@@ -62,7 +68,6 @@ app.action(/.*/, async ({ ack, body, action }) => {
   }
 });
 
-const port = parseInt(process.env.PORT ?? "3000", 10);
-app.start(port).then(() => {
-  logger.info(`Zoe bot running on port ${port}`);
+app.start().then(() => {
+  logger.info("Zoe bot running (Socket Mode)");
 });
