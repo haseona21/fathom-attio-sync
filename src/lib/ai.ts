@@ -23,7 +23,7 @@ export async function summarizeTranscript(
       messages: [
         {
           role: "user",
-          content: `Summarize this call summary about ${companyName} in one sentence, focusing on what they're building:\n\n${fullText}`,
+          content: `Summarize this call summary about ${companyName} in one sentence, focusing on what they're building. Reply with only the sentence, no headers or labels.\n\n${fullText}`,
         },
       ],
     });
