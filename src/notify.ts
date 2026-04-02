@@ -193,6 +193,14 @@ async function getCallSummary(
     else if (fathomMeeting.transcript) {
       summaryText = await summarizeTranscript(fathomMeeting.transcript, companyName);
     }
+    // Fetch transcript from dedicated endpoint if not in list response
+    else {
+      const transcript = await recording.getTranscript(fathomMeeting.id);
+      if (transcript) {
+        logger.info(`Fetched transcript for "${meetingTitle}" via getTranscript`);
+        summaryText = await summarizeTranscript(transcript, companyName);
+      }
+    }
   }
 
   // Fallback to Gmail Fathom email → Claude
