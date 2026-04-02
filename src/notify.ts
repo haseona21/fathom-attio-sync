@@ -25,6 +25,7 @@ interface MatchDiagnostic {
   personFound: boolean;
   personIds: string[];
   dealsByPerson: number;
+  dealsFilteredByStage: number;
   domain: string | null;
   domainIgnored: boolean;
   companyFound: boolean;
@@ -53,6 +54,7 @@ async function matchAttendeesToDeals(
       personFound: false,
       personIds: [],
       dealsByPerson: 0,
+      dealsFilteredByStage: 0,
       domain: extractDomain(email),
       domainIgnored: false,
       companyFound: false,
@@ -78,6 +80,7 @@ async function matchAttendeesToDeals(
 
         if (details && EXCLUDED_STAGES.has(details.dealStage)) {
           logger.info(`  Skipping deal ${details.dealName} — stage "${details.dealStage}" excluded`);
+          diag.dealsFilteredByStage++;
           continue;
         }
 
@@ -121,6 +124,7 @@ async function matchAttendeesToDeals(
 
         if (details && EXCLUDED_STAGES.has(details.dealStage)) {
           logger.info(`  Skipping deal ${details.dealName} — stage "${details.dealStage}" excluded`);
+          diag.dealsFilteredByStage++;
           continue;
         }
 
@@ -250,6 +254,14 @@ async function run(dryRun: boolean, windowMinutes: number) {
       const { matches, diagnostics } = await matchAttendeesToDeals(crm, meeting.attendeeEmails);
 
       if (!matches.length) {
+        const allFilteredByStage = diagnostics.some((d) => d.dealsFilteredByStage > 0)
+          && diagnostics.every((d) => d.dealsByPerson === d.dealsFilteredByStage && d.dealsByCompany === 0 || d.dealsByCompany === d.dealsFilteredByStage);
+
+        if (allFilteredByStage) {
+          logger.info(`  All deals filtered by stage for meeting '${meeting.title}' — skipping`);
+          continue;
+        }
+
         logger.info(`  No deal matches for meeting '${meeting.title}'`);
         if (!dryRun) {
           const diagLines = diagnostics.map((d) => {

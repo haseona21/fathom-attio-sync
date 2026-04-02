@@ -169,10 +169,13 @@ export function createAttioCRM(): CRM {
       const data = await attioGet(`/objects/${DEALS_OBJECT}/records/${dealRecordId}`);
       if (!data) return null;
       const values = valuesFrom(data);
+
+      const dealStage = parseStatusTitle(values, "deal_stage");
+
       return {
         recordId: dealRecordId,
         dealName: firstVal(values, "deal_name"),
-        dealStage: firstVal(values, "deal_stage", "status"),
+        dealStage,
         companyRecordId: firstRecordRef(values, "company"),
         primaryContactRecordId: firstRecordRef(values, "primary_contact"),
       };
@@ -289,13 +292,20 @@ export function createAttioCRM(): CRM {
   };
 }
 
+function parseStatusTitle(values: Record<string, unknown[]>, field: string): string {
+  const entries = values[field] as Record<string, unknown>[] | undefined;
+  if (!entries?.length) return "";
+  const status = entries[0].status as Record<string, unknown> | undefined;
+  return String(status?.title ?? "");
+}
+
 function parseDealRecord(record: Record<string, unknown>): Deal {
   const values = (record.values ?? {}) as Record<string, unknown[]>;
   const id = record.id as Record<string, string>;
   return {
     recordId: id.record_id,
     dealName: firstVal(values, "deal_name"),
-    dealStage: firstVal(values, "deal_stage", "status"),
+    dealStage: parseStatusTitle(values, "deal_stage"),
     companyRecordId: firstRecordRef(values, "company"),
     primaryContactRecordId: firstRecordRef(values, "primary_contact"),
   };
