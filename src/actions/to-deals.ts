@@ -13,7 +13,16 @@ export async function toDeals(payload: Record<string, string>) {
 
   logger.info(`To Deals action for deal ${dealId} (${companyName})`);
 
-  // 1. Get LinkedIn links for attendees
+  // 1. Get company description from Attio
+  let description = "";
+  if (dealId) {
+    const details = await crm.getDealDetails(dealId);
+    if (details?.companyRecordId) {
+      description = await crm.getCompanyDescription(details.companyRecordId);
+    }
+  }
+
+  // 3. Get LinkedIn links for attendees
   const linkedinLinks: string[] = [];
   if (attendeeEmail) {
     const personIds = await crm.findPersonByEmail(attendeeEmail);
@@ -28,10 +37,10 @@ export async function toDeals(payload: Record<string, string>) {
     }
   }
 
-  // 2. Get all deal links (Deck, Dataroom, Demo, etc.)
+  // 4. Get all deal links (Deck, Dataroom, Demo, etc.)
   const dealLinks = dealId ? await crm.getDealLinkedRecords(dealId) : [];
 
-  // 3. Get files uploaded to the deal record
+  // 5. Get files uploaded to the deal record
   const dealFiles = dealId ? await crm.getDealFiles(dealId) : [];
   const files: { name: string; downloadUrl: string }[] = [];
   for (const file of dealFiles) {
@@ -39,11 +48,11 @@ export async function toDeals(payload: Record<string, string>) {
     files.push({ name: file.name, downloadUrl });
   }
 
-  // 4. Post to deals channel
+  // 6. Post to deals channel
   try {
     const ts = await postToDealsChannel({
       companyName,
-      summary,
+      summary: description || summary,
       linkedinLinks,
       fathomLink,
       dealLinks,

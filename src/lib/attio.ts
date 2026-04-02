@@ -140,6 +140,12 @@ export function createAttioCRM(): CRM {
       return firstVal(valuesFrom(data), "name");
     },
 
+    async getCompanyDescription(companyRecordId) {
+      const data = await attioGet(`/objects/companies/records/${companyRecordId}`);
+      if (!data) return "";
+      return firstVal(valuesFrom(data), "description");
+    },
+
     async getCompanyFathomLink(companyRecordId) {
       const data = await attioGet(`/objects/companies/records/${companyRecordId}`);
       if (!data) return "";
