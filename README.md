@@ -15,7 +15,7 @@ Fetches Fathom recordings and appends share links to matching Person and Company
 - Posts to Slack with company name, summary, LinkedIn-linked attendees, Fathom link, and action buttons
 
 ### 3. Action Buttons
-Each Zoe message has three buttons handled by a Bolt HTTP server:
+Each Zoe message has three buttons handled by a Slack bot running in **Socket Mode**:
 
 | Button | Action |
 |---|---|
@@ -53,7 +53,11 @@ src/
     deal-review.ts
   fathom-sync.ts        # Entry: hourly Fathom → Attio cron
   notify.ts             # Entry: Zoe post-call notifications
-  bot.ts                # Entry: Slack Bolt HTTP server
+  bot.ts                # Entry: Slack bot (Socket Mode)
+scripts/
+  reauth-google.ts      # Re-authorize Google OAuth credentials
+templates/
+  rejection_email.txt   # Template for rejection email drafts
 ```
 
 CRM and Recording providers are behind interfaces — swap Attio or Fathom by writing a new implementation and changing one line in `config.ts`.
@@ -88,11 +92,11 @@ Add these secrets in **Settings → Secrets → Actions**:
 |---|---|
 | `FATHOM_API_KEY` | sync, notify |
 | `ATTIO_API_KEY` | sync, notify |
-| `SLACK_BOT_TOKEN` | notify |
+| `SLACK_BOT_TOKEN` | notify, bot |
+| `SLACK_APP_TOKEN` | bot (Socket Mode) |
 | `SLACK_CHANNEL` | notify |
 | `GOOGLE_CREDENTIALS_JSON` | notify |
 | `ANTHROPIC_API_KEY` | notify |
-| `SLACK_SIGNING_SECRET` | bot |
 
 ---
 
@@ -105,7 +109,7 @@ Add these secrets in **Settings → Secrets → Actions**:
 | `npm run sync` | Run Fathom → Attio link sync |
 | `npm run backfill` | Backfill last 14 days (no state update) |
 | `npm run notify` | Run Zoe notification check |
-| `npm run bot` | Start Slack bot server |
+| `npm run bot` | Start Slack bot (Socket Mode) |
 | `npm run typecheck` | TypeScript type checking |
 
 ### CLI flags
@@ -118,8 +122,12 @@ npm run backfill -- --days 30
 npm run notify -- --window 60 --dry-run
 ```
 
-### Bot deployment
-The bot (`npm run bot`) needs to run as an always-on process with a public URL for Slack webhooks. Deploy on Railway, Fly.io, or similar.
+### Google re-auth
+```bash
+npx tsx scripts/reauth-google.ts
+```
+
+Opens a browser flow to re-authorize Google OAuth credentials (Calendar + Gmail scopes).
 
 ---
 
