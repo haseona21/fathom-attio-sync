@@ -86,7 +86,19 @@ async function syncMeetings(
   logger.info(`Summary — People: ${stats.people}, Companies: ${stats.companies}, Skipped: ${stats.skipped}`);
 }
 
-async function main() {
+export async function runSync() {
+  const crm = createAttioCRM();
+  const recording = createFathomRecording();
+  const runStartedAt = new Date().toISOString();
+  const lastRun = readLastRun();
+  await syncMeetings(crm, recording, lastRun);
+  writeLastRun(runStartedAt);
+  logger.info(`Last run updated to ${runStartedAt}`);
+}
+
+// CLI entrypoint
+const isMain = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("/fathom-sync.ts");
+if (isMain) {
   const args = process.argv.slice(2);
   const backfill = args.includes("--backfill");
   const daysIdx = args.indexOf("--days");
@@ -98,17 +110,14 @@ async function main() {
   if (backfill) {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     logger.info(`Backfill mode: fetching meetings from the last ${days} days`);
-    await syncMeetings(crm, recording, since);
+    syncMeetings(crm, recording, since).catch((err) => {
+      logger.error("Fatal error:", err);
+      process.exit(1);
+    });
   } else {
-    const runStartedAt = new Date().toISOString();
-    const lastRun = readLastRun();
-    await syncMeetings(crm, recording, lastRun);
-    writeLastRun(runStartedAt);
-    logger.info(`Last run updated to ${runStartedAt}`);
+    runSync().catch((err) => {
+      logger.error("Fatal error:", err);
+      process.exit(1);
+    });
   }
 }
-
-main().catch((err) => {
-  logger.error("Fatal error:", err);
-  process.exit(1);
-});

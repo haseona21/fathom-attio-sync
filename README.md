@@ -5,7 +5,7 @@ A Slack–Attio bridge that automates deal flow after founder calls. Powered by 
 ## Features
 
 ### 1. Fathom Link Sync (hourly cron)
-Fetches Fathom recordings and appends share links to matching Person and Company records in Attio. Runs standalone via GitHub Actions — no Slack involved.
+Fetches Fathom recordings and appends share links to matching Person and Company records in Attio.
 
 ### 2. Zoe: Post-Call Notifications (every 10 min)
 - Polls Google Calendar for ended calls (5am–9pm PT, weekdays)
@@ -51,9 +51,10 @@ src/
     to-deals.ts
     ali-to-reject.ts
     deal-review.ts
-  fathom-sync.ts        # Entry: hourly Fathom → Attio cron
-  notify.ts             # Entry: Zoe post-call notifications
-  bot.ts                # Entry: Slack bot (Socket Mode)
+  main.ts               # Unified entrypoint: bot + cron schedules + health check
+  fathom-sync.ts        # Fathom → Attio link sync (also runnable standalone)
+  notify.ts             # Zoe post-call notifications (also runnable standalone)
+  bot.ts                # Slack bot (Socket Mode)
 scripts/
   reauth-google.ts      # Re-authorize Google OAuth credentials
 templates/
@@ -85,18 +86,21 @@ Fill in your API keys. See `.env.example` for all required variables.
 ### 3. Attio setup
 Create a custom **Text** attribute called `Fathom Links` (slug: `fathom_links`) on both **People** and **Companies** objects.
 
-### 4. GitHub secrets
-Add these secrets in **Settings → Secrets → Actions**:
+### 4. Environment variables (Railway)
 
-| Secret | Used by |
+| Variable | Used by |
 |---|---|
 | `FATHOM_API_KEY` | sync, notify |
 | `ATTIO_API_KEY` | sync, notify |
 | `SLACK_BOT_TOKEN` | notify, bot |
 | `SLACK_APP_TOKEN` | bot (Socket Mode) |
 | `SLACK_CHANNEL` | notify |
+| `SLACK_DEALS_CHANNEL` | to-deals action |
 | `GOOGLE_CREDENTIALS_JSON` | notify |
 | `ANTHROPIC_API_KEY` | notify |
+| `GITHUB_TOKEN` | unmatched call issues |
+| `GITHUB_REPOSITORY` | unmatched call issues |
+| `STATE_DIR` | `/data` on Railway (persistent volume) |
 
 ---
 
@@ -106,10 +110,11 @@ Add these secrets in **Settings → Secrets → Actions**:
 
 | Command | Description |
 |---|---|
-| `npm run sync` | Run Fathom → Attio link sync |
+| `npm start` | Run everything (bot + cron schedules + health check) |
+| `npm run sync` | Run Fathom → Attio link sync (standalone) |
 | `npm run backfill` | Backfill last 14 days (no state update) |
-| `npm run notify` | Run Zoe notification check |
-| `npm run bot` | Start Slack bot (Socket Mode) |
+| `npm run notify` | Run Zoe notification check (standalone) |
+| `npm run bot` | Start Slack bot only (Socket Mode) |
 | `npm run typecheck` | TypeScript type checking |
 
 ### CLI flags
@@ -131,9 +136,20 @@ Opens a browser flow to re-authorize Google OAuth credentials (Calendar + Gmail 
 
 ---
 
-## GitHub Actions
+## Deployment (Railway)
 
-| Workflow | Schedule | Entry point |
+Deployed as a single always-on service on Railway. The unified entrypoint (`npm start`) runs:
+
+| Workload | Schedule | Description |
 |---|---|---|
-| **Fathom Link Sync** | Hourly | `src/fathom-sync.ts` |
-| **Zoe Notifications** | Every 10 min, 5am–9pm PT + catch-all | `src/notify.ts` |
+| **Slack Bot** | Always-on | Socket Mode — handles button clicks |
+| **Fathom Sync** | Hourly | Syncs Fathom links to Attio |
+| **Notify** | Every 10 min (5am–9pm PT, weekdays) | Post-call notifications |
+
+### Railway setup
+1. Create a new service from the GitHub repo
+2. **Build command:** `npm ci`
+3. **Start command:** `npm start`
+4. Create a **persistent volume** mounted at `/data`
+5. Set `STATE_DIR=/data` and all other env vars above
+6. Health check: HTTP on `PORT` (auto-set by Railway)

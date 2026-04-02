@@ -2,10 +2,10 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logger } from "./errors.js";
 
-const ROOT = resolve(import.meta.dirname, "../..");
-const LAST_RUN_FILE = resolve(ROOT, "last_run.txt");
-const LAST_NOTIFY_FILE = resolve(ROOT, "last_notify.txt");
-const STATE_FILE = resolve(ROOT, "notified_events.json");
+const STATE_DIR = process.env.STATE_DIR ?? resolve(import.meta.dirname, "../..");
+const LAST_RUN_FILE = resolve(STATE_DIR, "last_run.txt");
+const LAST_NOTIFY_FILE = resolve(STATE_DIR, "last_notify.txt");
+const STATE_FILE = resolve(STATE_DIR, "notified_events.json");
 const PRUNE_DAYS = 30;
 
 // -- last_run.txt --

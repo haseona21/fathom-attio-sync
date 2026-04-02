@@ -232,7 +232,7 @@ async function buildLinkedinMap(
   return map;
 }
 
-async function run(dryRun: boolean, fallbackWindowMinutes: number) {
+export async function runNotify(dryRun: boolean, fallbackWindowMinutes: number) {
   const errors = new ErrorCollector();
   const state = loadNotifiedEvents();
   const crm = createAttioCRM();
@@ -399,7 +399,7 @@ async function main() {
   const windowIdx = args.indexOf("--window");
   const window = windowIdx >= 0 ? parseInt(args[windowIdx + 1], 10) : 10;
 
-  await run(dryRun, window);
+  await runNotify(dryRun, window);
 }
 
 main().catch((err) => {
