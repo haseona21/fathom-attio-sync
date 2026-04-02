@@ -147,6 +147,20 @@ export interface DealsPostData {
   files: { name: string; downloadUrl: string }[];
 }
 
+const ALERT_USER_ID = "U03KBKQ28UF";
+
+export async function sendAlertDM(message: string) {
+  try {
+    const client = getClient();
+    await client.chat.postMessage({
+      channel: ALERT_USER_ID,
+      text: `*Zoe Alert*\n${message}`,
+    });
+  } catch (err) {
+    logger.error(`Failed to send alert DM: ${err}`);
+  }
+}
+
 export async function postToDealsChannel(data: DealsPostData): Promise<string | null> {
   const client = getClient();
   const channel = SLACK_DEALS_CHANNEL();

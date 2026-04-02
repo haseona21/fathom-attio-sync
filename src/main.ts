@@ -5,6 +5,7 @@ import { startBot } from "./bot.js";
 import { runSync } from "./fathom-sync.js";
 import { runNotify } from "./notify.js";
 import { logger } from "./lib/errors.js";
+import { sendAlertDM } from "./lib/slack.js";
 
 function isPTBusinessHours(): boolean {
   const now = new Date();
@@ -34,6 +35,7 @@ createServer((_, res) => {
 // Start Slack bot
 startBot().catch((err) => {
   logger.error("Failed to start bot:", err);
+  sendAlertDM(`Bot failed to start: ${err}`);
 });
 
 // Fathom sync — every hour
@@ -43,6 +45,7 @@ cron.schedule("0 * * * *", async () => {
     await runSync();
   } catch (err) {
     logger.error("Cron: fathom sync failed:", err);
+    await sendAlertDM(`Fathom sync failed: ${err}`);
   }
 });
 
@@ -54,6 +57,7 @@ cron.schedule("*/10 * * * *", async () => {
     await runNotify(false, 10);
   } catch (err) {
     logger.error("Cron: notify failed:", err);
+    await sendAlertDM(`Notify failed: ${err}`);
   }
 });
 
