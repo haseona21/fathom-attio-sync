@@ -101,24 +101,60 @@ export async function getFathomSummary(
   return "";
 }
 
+const CALENDAR_PATTERNS = [
+  /^(Accepted|Declined|Tentative|Updated invitation|Canceled event):/i,
+  /^Invitation:/i,
+  /^.+ @ .+ \(.*\)$/,  // Google Calendar format: "Event @ Time (Timezone)"
+];
+
+const AUTOMATED_SENDERS = [
+  "no-reply@fathom.video",
+  "calendar-notification@google.com",
+  "noreply@google.com",
+];
+
+function isCalendarOrAutomated(subject: string, from: string): boolean {
+  const fromLower = from.toLowerCase();
+  if (AUTOMATED_SENDERS.some((s) => fromLower.includes(s))) return true;
+  if (CALENDAR_PATTERNS.some((p) => p.test(subject))) return true;
+  return false;
+}
+
 async function findExistingThread(
   gmail: ReturnType<typeof getGmailService>,
   emails: string[],
 ): Promise<{ threadId: string; messageId: string; subject: string } | null> {
-  const emailClause = emails.map((e) => `{${e}}`).join(" OR ");
-  const queries = [`(${emailClause}) -subject:Invitation`, `(${emailClause})`];
+  // Build proper Gmail search: from: or to: for each email
+  const emailFilters = emails
+    .flatMap((e) => [`from:${e}`, `to:${e}`])
+    .join(" OR ");
+  const query = `(${emailFilters})`;
 
-  for (const q of queries) {
+  let messages: { id: string }[] = [];
+  try {
+    const res = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 10 });
+    messages = (res.data.messages ?? []) as { id: string }[];
+  } catch (err) {
+    logger.warn(`Thread search failed: ${err}`);
+    return null;
+  }
+
+  if (!messages.length) {
+    logger.info(`No emails found for ${emails.join(", ")}`);
+    return null;
+  }
+
+  // Fetch headers for each message and score them
+  type Candidate = { threadId: string; messageId: string; subject: string; isReal: boolean };
+  const candidates: Candidate[] = [];
+
+  for (const m of messages) {
     try {
-      const res = await gmail.users.messages.list({ userId: "me", q, maxResults: 1 });
-      const messages = res.data.messages ?? [];
-      if (!messages.length) continue;
-
       const msg = await gmail.users.messages.get({
         userId: "me",
-        id: messages[0].id!,
+        id: m.id,
         format: "metadata",
-        metadataHeaders: ["Message-ID", "Subject"],
+        metadataHeaders: ["Message-ID", "Subject", "From"],
       });
 
       const headers: Record<string, string> = {};
@@ -126,15 +162,29 @@ async function findExistingThread(
         headers[h.name!] = h.value!;
       }
 
-      logger.info(`Found existing thread via query: ${q}`);
-      return {
+      const subject = headers["Subject"] ?? "";
+      const from = headers["From"] ?? "";
+      const isReal = !isCalendarOrAutomated(subject, from);
+
+      candidates.push({
         threadId: msg.data.threadId!,
         messageId: headers["Message-ID"] ?? "",
-        subject: headers["Subject"] ?? "",
-      };
+        subject,
+        isReal,
+      });
     } catch (err) {
-      logger.warn(`Thread search failed for query '${q}': ${err}`);
+      logger.warn(`Failed to fetch message ${m.id}: ${err}`);
     }
+  }
+
+  // Pick the best: prefer real conversations (first = most recent), fall back to calendar
+  const best = candidates.find((c) => c.isReal) ?? candidates[0] ?? null;
+
+  if (best) {
+    logger.info(
+      `Thread match for ${emails[0]}: "${best.subject}" (${best.isReal ? "conversation" : "calendar/auto"})`,
+    );
+    return { threadId: best.threadId, messageId: best.messageId, subject: best.subject };
   }
 
   return null;
@@ -188,7 +238,7 @@ export async function createRejectionDraft(
     draftBody.message = { threadId: existing.threadId };
     logger.info(`Replying in existing thread ${existing.threadId} for ${toEmail}`);
   } else {
-    mimeLines.push(`Subject: ${subject}`);
+    mimeLines.push(`Subject: ${subject || "Following up"}`);
   }
 
   mimeLines.push("", body);
