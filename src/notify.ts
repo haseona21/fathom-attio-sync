@@ -8,7 +8,7 @@ import { getRecentlyEndedMeetings, type CalendarMeeting } from "./lib/gcal.js";
 import { getFathomSummary } from "./lib/gmail.js";
 import { sendZoeMessage } from "./lib/slack.js";
 import { summarizeTranscript } from "./lib/ai.js";
-import { loadNotifiedEvents, saveNotifiedEvents, stateKey } from "./lib/state.js";
+import { loadNotifiedEvents, saveNotifiedEvents, stateKey, readLastNotify, writeLastNotify } from "./lib/state.js";
 import { ErrorCollector, createGitHubIssue, logger } from "./lib/errors.js";
 
 interface DealMatch {
@@ -224,13 +224,29 @@ async function buildLinkedinMap(
   return map;
 }
 
-async function run(dryRun: boolean, windowMinutes: number) {
+async function run(dryRun: boolean, fallbackWindowMinutes: number) {
   const errors = new ErrorCollector();
   const state = loadNotifiedEvents();
   const crm = createAttioCRM();
   const recording = createFathomRecording();
 
-  logger.info(`Starting notification run (dry_run=${dryRun}, window=${windowMinutes}m)`);
+  // Use last notify timestamp for window, fall back to fixed window
+  const lastNotify = readLastNotify();
+  const now = new Date();
+  let windowMinutes: number;
+
+  if (lastNotify) {
+    const elapsed = Math.ceil((now.getTime() - new Date(lastNotify).getTime()) / 60_000);
+    // Cap at 180 min to avoid scanning too far back (e.g. overnight)
+    windowMinutes = Math.min(Math.max(elapsed, fallbackWindowMinutes), 180);
+  } else {
+    windowMinutes = fallbackWindowMinutes;
+  }
+
+  logger.info(`Starting notification run (dry_run=${dryRun}, window=${windowMinutes}m, last_notify=${lastNotify ?? "none"})`);
+
+  // Save the check timestamp now so the next run covers from this point
+  if (!dryRun) writeLastNotify(now.toISOString());
 
   let meetings: CalendarMeeting[];
   try {
@@ -263,6 +279,11 @@ async function run(dryRun: boolean, windowMinutes: number) {
         }
 
         logger.info(`  No deal matches for meeting '${meeting.title}'`);
+        const unmatchedKey = stateKey(meeting.eventId, "unmatched");
+        if (unmatchedKey in state) {
+          logger.info(`  Already filed unmatched issue for ${meeting.eventId}, skipping`);
+          continue;
+        }
         if (!dryRun) {
           const diagLines = diagnostics.map((d) => {
             const steps: string[] = [`  - \`${d.email}\``];
@@ -298,6 +319,7 @@ async function run(dryRun: boolean, windowMinutes: number) {
             ].join("\n"),
             ["unmatched-call"],
           );
+          state[unmatchedKey] = new Date().toISOString();
         }
         continue;
       }

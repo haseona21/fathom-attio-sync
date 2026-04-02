@@ -61,6 +61,19 @@ export async function createGitHubIssue(title: string, body: string, labels: str
   }
 
   try {
+    // Check for existing open issue with same title to avoid duplicates
+    const searchResp = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/issues?state=open&labels=${labels.join(",")}&per_page=100`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (searchResp.ok) {
+      const existing = (await searchResp.json()) as { title: string }[];
+      if (existing.some((issue) => issue.title === title)) {
+        logger.info(`GitHub issue already exists: "${title}" — skipping`);
+        return;
+      }
+    }
+
     const resp = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
       method: "POST",
       headers: {

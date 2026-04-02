@@ -45,5 +45,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           [ -f notified_events.json ] && git add notified_events.json
+          [ -f last_notify.txt ] && git add last_notify.txt
           git diff --staged --quiet || git commit -m "chore: update notified_events [skip ci]"
+          git pull --rebase || true
           git push

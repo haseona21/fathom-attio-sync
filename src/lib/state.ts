@@ -4,6 +4,7 @@ import { logger } from "./errors.js";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const LAST_RUN_FILE = resolve(ROOT, "last_run.txt");
+const LAST_NOTIFY_FILE = resolve(ROOT, "last_notify.txt");
 const STATE_FILE = resolve(ROOT, "notified_events.json");
 const PRUNE_DAYS = 30;
 
@@ -17,6 +18,18 @@ export function readLastRun(): string | null {
 
 export function writeLastRun(ts: string) {
   writeFileSync(LAST_RUN_FILE, ts);
+}
+
+// -- last_notify.txt --
+
+export function readLastNotify(): string | null {
+  if (!existsSync(LAST_NOTIFY_FILE)) return null;
+  const val = readFileSync(LAST_NOTIFY_FILE, "utf-8").trim();
+  return val || null;
+}
+
+export function writeLastNotify(ts: string) {
+  writeFileSync(LAST_NOTIFY_FILE, ts);
 }
 
 // -- notified_events.json --
