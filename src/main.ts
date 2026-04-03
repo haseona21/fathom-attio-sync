@@ -3,7 +3,6 @@ import { createServer } from "node:http";
 import cron from "node-cron";
 import { startBot } from "./bot.js";
 import { runSync } from "./fathom-sync.js";
-import { runNotify } from "./notify.js";
 import { logger } from "./lib/errors.js";
 import { sendAlertDM } from "./lib/slack.js";
 
@@ -38,9 +37,10 @@ startBot().catch((err) => {
   sendAlertDM(`Bot failed to start: ${err}`);
 });
 
-// Fathom sync — every hour
-cron.schedule("0 * * * *", async () => {
-  logger.info("Cron: starting fathom sync");
+// Fathom sync + notify — every 10 min during PT business hours
+cron.schedule("*/10 * * * *", async () => {
+  if (!isPTBusinessHours()) return;
+  logger.info("Cron: starting fathom sync + notify");
   try {
     await runSync();
   } catch (err) {
@@ -49,16 +49,4 @@ cron.schedule("0 * * * *", async () => {
   }
 });
 
-// Notify — every 10 min during PT business hours
-cron.schedule("*/10 * * * *", async () => {
-  if (!isPTBusinessHours()) return;
-  logger.info("Cron: starting notify check");
-  try {
-    await runNotify(false, 10);
-  } catch (err) {
-    logger.error("Cron: notify failed:", err);
-    await sendAlertDM(`Notify failed: ${err}`);
-  }
-});
-
-logger.info("Main process started — bot + cron schedules active");
+logger.info("Main process started — bot + cron schedule active");

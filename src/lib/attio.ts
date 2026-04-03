@@ -167,13 +167,9 @@ export function createAttioCRM(): CRM {
       return team;
     },
 
-    async getCompanyFathomLink(companyRecordId) {
-      const data = await attioGet(`/objects/companies/records/${companyRecordId}`);
-      if (!data) return "";
-      const fullValue = firstVal(valuesFrom(data), ATTIO_ATTRIBUTE);
-      if (!fullValue) return "";
-      const parts = fullValue.split(",").map((p) => p.trim());
-      return parts[parts.length - 1] ?? "";
+    async getCompanyFathomLink(_companyRecordId) {
+      // fathom_links attribute only exists on People, not Companies
+      return "";
     },
 
     async findDealsByPerson(personRecordId) {

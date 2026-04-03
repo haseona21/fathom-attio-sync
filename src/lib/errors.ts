@@ -19,13 +19,6 @@ export class GmailError extends Error {
   }
 }
 
-export class CalendarError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CalendarError";
-  }
-}
-
 const LOG_LEVEL = (process.env.LOG_LEVEL ?? "INFO").toUpperCase();
 const LEVELS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
 const levelIndex = LEVELS.indexOf(LOG_LEVEL as (typeof LEVELS)[number]);
