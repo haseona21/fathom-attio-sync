@@ -13,26 +13,20 @@ export async function toDeals(payload: Record<string, string>) {
 
   logger.info(`To Deals action for deal ${dealId} (${companyName})`);
 
-  // 1. Get company description from Attio
+  // 1. Get company description + team from Attio
   let description = "";
+  const linkedinLinks: string[] = [];
   if (dealId) {
     const details = await crm.getDealDetails(dealId);
     if (details?.companyRecordId) {
       description = await crm.getCompanyDescription(details.companyRecordId);
-    }
-  }
-
-  // 3. Get LinkedIn links for attendees
-  const linkedinLinks: string[] = [];
-  if (attendeeEmail) {
-    const personIds = await crm.findPersonByEmail(attendeeEmail);
-    for (const pid of personIds) {
-      const person = await crm.getPersonDetails(pid);
-      const linkedin = await crm.getPersonLinkedin(pid);
-      if (linkedin && person?.name) {
-        linkedinLinks.push(`<${linkedin}|${person.name}>`);
-      } else if (linkedin) {
-        linkedinLinks.push(linkedin);
+      const team = await crm.getCompanyTeam(details.companyRecordId);
+      for (const member of team) {
+        if (member.linkedin) {
+          linkedinLinks.push(`<${member.linkedin}|${member.name}>`);
+        } else {
+          linkedinLinks.push(member.name);
+        }
       }
     }
   }

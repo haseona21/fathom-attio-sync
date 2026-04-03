@@ -61,6 +61,12 @@ function firstRecordRef(values: Record<string, unknown[]>, field: string): strin
   return String(entries[0].target_record_id ?? "");
 }
 
+function allRecordRefs(values: Record<string, unknown[]>, field: string): string[] {
+  const entries = values[field] as Record<string, unknown>[] | undefined;
+  if (!entries?.length) return [];
+  return entries.map((e) => String(e.target_record_id ?? "")).filter(Boolean);
+}
+
 export function createAttioCRM(): CRM {
   return {
     async findPersonByEmail(email) {
@@ -144,6 +150,21 @@ export function createAttioCRM(): CRM {
       const data = await attioGet(`/objects/companies/records/${companyRecordId}`);
       if (!data) return "";
       return firstVal(valuesFrom(data), "description");
+    },
+
+    async getCompanyTeam(companyRecordId) {
+      const data = await attioGet(`/objects/companies/records/${companyRecordId}`);
+      if (!data) return [];
+      const personIds = allRecordRefs(valuesFrom(data), "team");
+      const team: { name: string; linkedin: string }[] = [];
+      for (const pid of personIds) {
+        const person = await this.getPersonDetails(pid);
+        const linkedin = await this.getPersonLinkedin(pid);
+        if (person?.name) {
+          team.push({ name: person.name, linkedin });
+        }
+      }
+      return team;
     },
 
     async getCompanyFathomLink(companyRecordId) {

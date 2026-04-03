@@ -40,6 +40,7 @@ export interface CRM {
   findCompanyByDomain(domain: string): Promise<string[]>;
   getCompanyName(companyRecordId: string): Promise<string>;
   getCompanyDescription(companyRecordId: string): Promise<string>;
+  getCompanyTeam(companyRecordId: string): Promise<{ name: string; linkedin: string }[]>;
   getCompanyFathomLink(companyRecordId: string): Promise<string>;
 
   // Deals
