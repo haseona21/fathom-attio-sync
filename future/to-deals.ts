@@ -1,23 +1,22 @@
-import { WebClient } from "@slack/web-api";
 import { createAttioCRM } from "../lib/attio.js";
+import { postToDealsChannel } from "../lib/slack.js";
 import { logger } from "../lib/errors.js";
-import { SLACK_BOT_TOKEN } from "../lib/config.js";
-
-const MAE_USER_ID = "U03KBKQ28UF";
 
 export async function toDeals(payload: Record<string, string>) {
   const dealId = payload.deal_record_id ?? "";
   const companyName = payload.company_name ?? "";
+  const attendeeEmail = payload.attendee_email ?? "";
+  const summary = payload.summary ?? "";
   const fathomLink = payload.fathom_link ?? "";
 
   const crm = createAttioCRM();
 
   logger.info(`To Deals action for deal ${dealId} (${companyName})`);
 
-  // Get deal details, company description + team from Attio
+  // 1. Get deal details, company description + team from Attio
   let dealName = companyName;
   let description = "";
-  const teamLinks: string[] = [];
+  const linkedinLinks: string[] = [];
   if (dealId) {
     const details = await crm.getDealDetails(dealId);
     if (details?.dealName) dealName = details.dealName;
@@ -26,15 +25,15 @@ export async function toDeals(payload: Record<string, string>) {
       const team = await crm.getCompanyTeam(details.companyRecordId);
       for (const member of team) {
         if (member.linkedin) {
-          teamLinks.push(`<${member.linkedin}|${member.name}>`);
+          linkedinLinks.push(`<${member.linkedin}|${member.name}>`);
         } else {
-          teamLinks.push(member.name);
+          linkedinLinks.push(member.name);
         }
       }
     }
   }
 
-  // Get Fathom link from Attio if not in payload
+  // 2. Get Fathom link from Attio (fresh, not from payload)
   let latestFathomLink = fathomLink;
   if (dealId && !latestFathomLink) {
     const details = await crm.getDealDetails(dealId);
@@ -43,27 +42,26 @@ export async function toDeals(payload: Record<string, string>) {
     }
   }
 
-  // Get deal links (Deck, Dataroom, Demo, etc.)
+  // 3. Get all deal links (Deck, Dataroom, Demo, etc.)
   const dealLinks = dealId ? await crm.getDealLinkedRecords(dealId) : [];
 
-  // Build message for Mae
-  const lines = [`*${dealName}*`];
-  if (description) lines.push(description);
-  if (teamLinks.length) lines.push(teamLinks.join(", "));
-  if (latestFathomLink) lines.push(`<${latestFathomLink}|Fathom Recording>`);
-  if (dealLinks.length) {
-    lines.push(dealLinks.map((l) => `<${l.url}|${l.title || l.type || "Link"}>`).join("  "));
-  }
-
-  const message = lines.join("\n");
-
+  // 4. Post to deals channel
   try {
-    const client = new WebClient(SLACK_BOT_TOKEN());
-    await client.chat.postMessage({ channel: MAE_USER_ID, text: message });
-    logger.info(`To Deals DM sent to Mae for ${dealName}`);
-    return { success: true, message: `Sent to <@${MAE_USER_ID}> to add to deals` };
+    const ts = await postToDealsChannel({
+      companyName: dealName,
+      summary: description || summary,
+      linkedinLinks,
+      fathomLink: latestFathomLink,
+      dealLinks,
+      files: [],
+    });
+
+    if (ts) {
+      return { success: true, message: "Posted to deals channel" };
+    }
+    return { success: false, message: "Failed to post to deals channel" };
   } catch (err) {
-    logger.error(`Failed to send To Deals DM: ${err}`);
-    return { success: false, message: `Failed to send DM: ${err}` };
+    logger.error(`Failed to post to deals channel: ${err}`);
+    return { success: false, message: `Failed to post to deals channel: ${err}` };
   }
 }
