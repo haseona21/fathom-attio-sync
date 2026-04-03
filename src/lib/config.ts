@@ -30,7 +30,9 @@ export function getGoogleAuth() {
   if (_googleAuth) return _googleAuth;
 
   const raw = env("GOOGLE_CREDENTIALS_JSON");
-  const creds = JSON.parse(raw);
+  // Strip control characters that can sneak in during copy/paste or env injection
+  const sanitized = raw.replace(/[\x00-\x1f\x7f]/g, (ch) => ch === " " ? " " : "");
+  const creds = JSON.parse(sanitized);
 
   const auth = new google.auth.OAuth2(
     creds.client_id,
