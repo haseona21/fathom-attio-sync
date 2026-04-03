@@ -371,6 +371,9 @@ export async function runNotify(dryRun: boolean, fallbackWindowMinutes: number) 
               endTime: meeting.endTime,
             });
 
+            // Auto-move deal to Deal Review
+            await crm.updateDealStage(match.dealRecordId, "Deal Review");
+
             notificationsSent++;
           } catch (err) {
             errors.add(`slack_send:${match.dealRecordId}`, err);

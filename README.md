@@ -1,155 +1,80 @@
-# attio-sync
+# Zoe — Post-Call Deal Decision Tool
 
-A Slack–Attio bridge that automates deal flow after founder calls. Powered by **Zoe**, a Slack bot that notifies the team and handles post-call workflows.
+Deployed on **Railway**. Runs a single Node.js process that handles cron jobs (notify every 10 min, Fathom sync hourly) and the Slack bot via Socket Mode, with a health check on port 8080.
 
-## Features
+## How it works
 
-### 1. Fathom Link Sync (hourly cron)
-Fetches Fathom recordings and appends share links to matching Person and Company records in Attio.
+After a founder call ends, Zoe polls Google Calendar for recently ended meetings, then checks Attio to confirm the company has a deal in Magic (filtering out Rejected and Invested stages). It fetches the Fathom recording link via the Fathom API, logs it in Attio, then assembles and sends a Slack notification with the company name, AI-generated call summary, hyperlinked founder LinkedIn profiles, and Fathom recording link. The deal is automatically moved to "Deal Review" stage in Attio.
 
-### 2. Zoe: Post-Call Notifications (every 10 min)
-- Polls Google Calendar for ended calls (5am–9pm PT, weekdays)
-- Matches attendees to Attio deals (via person or company domain)
-- Pulls transcript from Fathom API (Gmail email as fallback)
-- Generates a one-sentence AI summary via Claude
-- Posts to Slack with company name, summary, LinkedIn-linked attendees, Fathom link, and action buttons
+The lookback window is computed dynamically from the last successful run (stored in `last_notify.txt`), so even if a cron cycle is delayed, the next run catches everything in the gap (capped at 3 hours). Duplicate notifications are prevented via `notified_events.json` state tracking.
 
-### 3. Action Buttons
-Each Zoe message has three buttons handled by a Slack bot running in **Socket Mode**:
+Unmatched calls (no deal found in Attio) automatically create a GitHub issue with diagnostic info showing where the match pipeline broke down.
 
-| Button | Action |
-|---|---|
-| **To Deals** | Posts deal summary to the deals channel |
-| **Ali to Reject** | Updates deal stage + creates Gmail rejection draft |
-| **Deal Review** | Updates deal stage to "Deal Review" |
+## Actions
 
-### 4. Unmatched Call Alerts
-When a call has no matching deal in Attio, a GitHub issue is created with full pipeline diagnostics (person lookup, domain handling, company match results).
+Ali gets two buttons on each Zoe notification:
 
----
+- **To Deals** — Fetches the deal name, company description, founding team with LinkedIn profiles (from Company > Team in Attio), Fathom recording link, and deal links (Deck, Dataroom, Demo), then DMs Mae to add to the deals pipeline
+- **Ali to Reject** — Updates the deal stage to "Ali to Reject" in Attio and drafts a rejection email in Gmail (threading into an existing conversation if one exists)
 
-## Project Structure
+## Architecture
 
 ```
 src/
-  types/
-    crm.ts             # CRM interface (swappable)
-    recording.ts        # Recording interface (swappable)
-  lib/
-    config.ts           # Env vars, Google auth
-    errors.ts           # Error classes, logger, GitHub issue creation
-    http.ts             # fetchWithRetry (429 handling)
-    state.ts            # State file I/O
-    attio.ts            # CRM implementation (Attio)
-    fathom.ts           # Recording implementation (Fathom)
-    gcal.ts             # Google Calendar
-    gmail.ts            # Gmail drafts + Fathom email search
-    slack.ts            # Zoe message formatting
-    ai.ts               # Claude summarization
+  bot.ts                  # Entry point: cron + Slack Socket Mode
+  notify.ts               # Post-call notification pipeline
+  fathom-sync.ts          # Hourly Fathom recording link sync to Attio
   actions/
-    registry.ts         # Button handler registry
-    to-deals.ts
-    ali-to-reject.ts
-    deal-review.ts
-  main.ts               # Unified entrypoint: bot + cron schedules + health check
-  fathom-sync.ts        # Fathom → Attio link sync (also runnable standalone)
-  notify.ts             # Zoe post-call notifications (also runnable standalone)
-  bot.ts                # Slack bot (Socket Mode)
-scripts/
-  reauth-google.ts      # Re-authorize Google OAuth credentials
+    registry.ts           # Action handler routing
+    to-deals.ts           # DM Mae with deal info
+    ali-to-reject.ts      # Reject + Gmail draft
+  lib/
+    attio.ts              # Attio CRM client
+    fathom.ts             # Fathom recording API client
+    gcal.ts               # Google Calendar polling
+    gmail.ts              # Gmail search + rejection drafts
+    slack.ts              # Slack message formatting + posting
+    ai.ts                 # Claude API for call summaries
+    config.ts             # Env var management + Google OAuth
+    errors.ts             # Error classes, logger, GitHub issue creation
+    state.ts              # File I/O for last_run, last_notify, notified_events
+    http.ts               # fetchWithRetry with rate-limit handling
+  types/
+    crm.ts                # CRM interface (Attio implementation)
+    recording.ts          # Recording interface (Fathom implementation)
 templates/
-  rejection_email.txt   # Template for rejection email drafts
+  rejection_email.txt     # Rejection email template
+future/                   # Parked features for later
+scripts/                  # Utility scripts (e.g. Google OAuth reauth)
 ```
 
-CRM and Recording providers are behind interfaces — swap Attio or Fathom by writing a new implementation and changing one line in `config.ts`.
+## Data flow
 
----
+Attio (source of truth) / Fathom / Google Calendar / Gmail / Slack / Anthropic API
 
-## Setup
+- **CRM interface** in `src/types/crm.ts`, implemented by `src/lib/attio.ts`
+- **Recording interface** in `src/types/recording.ts`, implemented by `src/lib/fathom.ts`
+- Deals object slug in Attio is `magic`
 
-### Prerequisites
-- Node.js 22+
-- npm
+## Environment variables
 
-### 1. Install dependencies
-```bash
-npm install
-```
-
-### 2. Configure environment
-```bash
-cp .env.example .env
-```
-
-Fill in your API keys. See `.env.example` for all required variables.
-
-### 3. Attio setup
-Create a custom **Text** attribute called `Fathom Links` (slug: `fathom_links`) on both **People** and **Companies** objects.
-
-### 4. Environment variables (Railway)
-
-| Variable | Used by |
+| Variable | Purpose |
 |---|---|
-| `FATHOM_API_KEY` | sync, notify |
-| `ATTIO_API_KEY` | sync, notify |
-| `SLACK_BOT_TOKEN` | notify, bot |
-| `SLACK_APP_TOKEN` | bot (Socket Mode) |
-| `SLACK_CHANNEL` | notify |
-| `SLACK_DEALS_CHANNEL` | to-deals action |
-| `GOOGLE_CREDENTIALS_JSON` | notify |
-| `ANTHROPIC_API_KEY` | notify |
-| `GITHUB_TOKEN` | unmatched call issues |
-| `GITHUB_REPOSITORY` | unmatched call issues |
+| `ATTIO_API_KEY` | Attio CRM API |
+| `FATHOM_API_KEY` | Fathom recording API |
+| `SLACK_BOT_TOKEN` | Slack bot (xoxb) |
+| `SLACK_APP_TOKEN` | Slack Socket Mode (xapp) |
+| `SLACK_CHANNEL` | Primary notification channel |
+| `GOOGLE_CREDENTIALS_JSON` | Google OAuth credentials (JSON string) |
+| `ANTHROPIC_API_KEY` | Claude API for AI summaries |
+| `GITHUB_TOKEN` | GitHub API for unmatched call issues |
 
----
-
-## Running
-
-### npm scripts
-
-| Command | Description |
-|---|---|
-| `npm start` | Run everything (bot + cron schedules + health check) |
-| `npm run sync` | Run Fathom → Attio link sync (standalone) |
-| `npm run backfill` | Backfill last 14 days (no state update) |
-| `npm run notify` | Run Zoe notification check (standalone) |
-| `npm run bot` | Start Slack bot only (Socket Mode) |
-| `npm run typecheck` | TypeScript type checking |
-
-### CLI flags
+## Local development
 
 ```bash
-# Backfill with custom window
-npm run backfill -- --days 30
-
-# Notify with custom window and dry run
-npm run notify -- --window 60 --dry-run
+npm ci
+cp .env.example .env   # fill in credentials
+npm run bot             # start bot + cron
+npm run notify          # one-off notify check (--window 60 --dry-run)
+npm run sync            # one-off Fathom sync
 ```
-
-### Google re-auth
-```bash
-npx tsx scripts/reauth-google.ts
-```
-
-Opens a browser flow to re-authorize Google OAuth credentials (Calendar + Gmail scopes).
-
----
-
-## Deployment (Railway)
-
-Deployed as a single always-on service on Railway. The unified entrypoint (`npm start`) runs:
-
-| Workload | Schedule | Description |
-|---|---|---|
-| **Slack Bot** | Always-on | Socket Mode — handles button clicks |
-| **Fathom Sync** | Hourly | Syncs Fathom links to Attio |
-| **Notify** | Every 10 min (5am–9pm PT, weekdays) | Post-call notifications |
-
-Runtime failures (bot disconnect, cron errors) send a Slack DM alert automatically.
-
-### Railway setup
-1. Create a new service from the GitHub repo
-2. **Build command:** `npm ci`
-3. **Start command:** `npm start`
-4. Set all env vars above
-5. Health check: HTTP on `PORT` (auto-set by Railway)

@@ -83,13 +83,6 @@ export async function sendZoeMessage(data: ZoeMessageData): Promise<string | nul
           value: buttonPayload,
           style: "danger" as const,
         },
-        {
-          type: "button" as const,
-          text: { type: "plain_text" as const, text: "Deal Review" },
-          action_id: "deal_review",
-          value: buttonPayload,
-          style: "primary" as const,
-        },
       ],
     },
   ];
@@ -170,19 +163,8 @@ export async function postToDealsChannel(data: DealsPostData): Promise<string | 
   if (data.linkedinLinks.length) lines.push(data.linkedinLinks.join(", "));
   if (data.fathomLink) lines.push(`<${data.fathomLink}|Fathom Recording>`);
 
-  for (const link of data.dealLinks) {
-    const label = link.title || link.url;
-    lines.push(`${link.type}: <${link.url}|${label}>`);
-  }
-
-  if (data.files.length) {
-    for (const file of data.files) {
-      if (file.downloadUrl) {
-        lines.push(`<${file.downloadUrl}|${file.name}>`);
-      } else {
-        lines.push(file.name);
-      }
-    }
+  if (data.dealLinks.length) {
+    lines.push(data.dealLinks.map((l) => `<${l.url}|${l.title || l.type || "Link"}>`).join("  "));
   }
 
   const text = lines.join("\n");
