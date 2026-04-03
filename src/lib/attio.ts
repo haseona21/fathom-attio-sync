@@ -219,9 +219,8 @@ export function createAttioCRM(): CRM {
         const linkType = typeEntries?.length
           ? String((typeEntries[0].option as Record<string, string>)?.title ?? "")
           : "";
-        const title = firstVal(linkValues, "url_title");
 
-        results.push({ url, type: linkType, title });
+        results.push({ url, type: linkType, title: linkType });
       }
       return results;
     },
